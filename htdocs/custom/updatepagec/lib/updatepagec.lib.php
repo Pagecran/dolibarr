@@ -28,7 +28,7 @@ class UpdatePagec
         $this->user = $user;
         $this->conf = $conf;
         $this->logfile = DOL_DATA_ROOT . '/updatepagec.log';
-        $this->script_path = DOL_DOCUMENT_ROOT . '/dolibarr_pagec_proxmox.sh';
+        $this->script_url = 'https://raw.githubusercontent.com/Pagecran/dolibarr/Pagec/dolibarr_pagec_proxmox.sh';
     }
 
     /**
@@ -60,8 +60,8 @@ class UpdatePagec
         $this->log("INFO", "Début de la mise à jour Pagecran");
 
         try {
-            // Exécution du script
-            $command = "bash " . escapeshellarg($this->script_path) . " 2>&1";
+            // Exécution du script directement depuis GitHub
+            $command = "curl -s " . escapeshellarg($this->script_url) . " | bash 2>&1";
             $output = shell_exec($command);
             $return_code = $this->getLastReturnCode();
 
@@ -107,19 +107,16 @@ class UpdatePagec
     }
 
     /**
-     * Valide l'existence et les permissions du script
+     * Valide l'accessibilité du script GitHub
      * 
      * @return bool
      */
     public function validateScript()
     {
-        if (!file_exists($this->script_path)) {
-            $this->log("ERROR", "Script non trouvé: " . $this->script_path);
-            return false;
-        }
-
-        if (!is_executable($this->script_path)) {
-            $this->log("ERROR", "Script non exécutable: " . $this->script_path);
+        // Test de l'accessibilité de l'URL GitHub
+        $headers = get_headers($this->script_url);
+        if (!$headers || strpos($headers[0], '200') === false) {
+            $this->log("ERROR", "Script GitHub inaccessible: " . $this->script_url);
             return false;
         }
 
@@ -227,10 +224,14 @@ class UpdatePagec
      */
     public function getSystemInfo()
     {
+        // Test de l'accessibilité de l'URL GitHub
+        $headers = get_headers($this->script_url);
+        $script_accessible = $headers && strpos($headers[0], '200') !== false;
+        
         return array(
-            'script_path' => $this->script_path,
-            'script_exists' => file_exists($this->script_path),
-            'script_executable' => is_executable($this->script_path),
+            'script_path' => $this->script_url,
+            'script_exists' => $script_accessible,
+            'script_executable' => $script_accessible,
             'log_file' => $this->logfile,
             'log_writable' => is_writable(dirname($this->logfile)),
             'user' => $this->user->login,
