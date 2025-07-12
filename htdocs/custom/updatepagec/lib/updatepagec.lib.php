@@ -59,6 +59,10 @@ class UpdatePagec
         // Log du début
         $this->log("INFO", "Début de la mise à jour Pagecran");
 
+        // Vérification de l'état Git avant mise à jour
+        $git_status = $this->getGitStatus();
+        $this->log("INFO", "État Git avant mise à jour: " . $git_status);
+
         try {
             // Exécution du script directement depuis GitHub
             $command = "curl -s " . escapeshellarg($this->script_url) . " | bash 2>&1";
@@ -68,6 +72,11 @@ class UpdatePagec
             // Log du résultat
             if ($return_code === 0) {
                 $this->log("INFO", "Mise à jour terminée avec succès");
+                
+                // Vérification de l'état Git après mise à jour
+                $git_status_after = $this->getGitStatus();
+                $this->log("INFO", "État Git après mise à jour: " . $git_status_after);
+                
                 $result['success'] = true;
             } else {
                 $this->log("ERROR", "Mise à jour échouée (code: $return_code)");
@@ -196,6 +205,34 @@ class UpdatePagec
         // En réalité, shell_exec ne retourne pas le code de sortie
         // On utilise une approche alternative
         return 0; // Par défaut, on considère que ça s'est bien passé
+    }
+
+    /**
+     * Récupère l'état Git du répertoire
+     * 
+     * @return string État Git
+     */
+    private function getGitStatus()
+    {
+        // Le répertoire racine de Dolibarr est le répertoire parent de htdocs
+        $dolibarr_root = dirname(DOL_DOCUMENT_ROOT);
+        
+        // Vérification si on est dans un repo Git
+        if (!is_dir($dolibarr_root . '/.git')) {
+            return "Pas de repository Git dans: " . $dolibarr_root;
+        }
+
+        // Récupération de l'état Git
+        $git_status = shell_exec("cd " . escapeshellarg($dolibarr_root) . " && git status --porcelain 2>&1");
+        $git_branch = shell_exec("cd " . escapeshellarg($dolibarr_root) . " && git branch --show-current 2>&1");
+        
+        if (empty(trim($git_status))) {
+            return "Repository propre sur la branche: " . trim($git_branch);
+        } else {
+            $modified_files = explode("\n", trim($git_status));
+            $modified_count = count(array_filter($modified_files));
+            return "Repository avec $modified_count fichier(s) modifié(s) sur la branche: " . trim($git_branch);
+        }
     }
 
     /**

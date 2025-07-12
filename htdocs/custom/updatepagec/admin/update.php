@@ -14,25 +14,33 @@ $errors = array();
 
 // Traitement des actions
 if ($action == 'update') {
-    $updatepagec = new UpdatePagec($db);
-    $result = $updatepagec->launchUpdate();
-    
-    if ($result['success']) {
-        setEventMessages($langs->trans("UpdateLaunchedSuccessfully"), null, 'mesgs');
+    if (GETPOST('token') == newToken()) {
+        $updatepagec = new UpdatePagec($db);
+        $result = $updatepagec->launchUpdate();
+        
+        if ($result['success']) {
+            setEventMessages($langs->trans("UpdateLaunchedSuccessfully"), null, 'mesgs');
+        } else {
+            setEventMessages($langs->trans("UpdateFailed"), $result['errors'], 'errors');
+        }
     } else {
-        setEventMessages($langs->trans("UpdateFailed"), $result['errors'], 'errors');
+        setEventMessages("Erreur de sécurité : token CSRF invalide", null, 'errors');
     }
 }
 
 // Traitement de la restauration
 if ($action == 'restore') {
-    $updatepagec = new UpdatePagec($db);
-    $restore_result = $updatepagec->restoreBackup();
-    
-    if ($restore_result['success']) {
-        setEventMessages("Restauration effectuée avec succès", null, 'mesgs');
+    if (GETPOST('token') == newToken()) {
+        $updatepagec = new UpdatePagec($db);
+        $restore_result = $updatepagec->restoreBackup();
+        
+        if ($restore_result['success']) {
+            setEventMessages("Restauration effectuée avec succès", null, 'mesgs');
+        } else {
+            setEventMessages("Échec de la restauration", $restore_result['errors'], 'errors');
+        }
     } else {
-        setEventMessages("Échec de la restauration", $restore_result['errors'], 'errors');
+        setEventMessages("Erreur de sécurité : token CSRF invalide", null, 'errors');
     }
 }
 
@@ -62,6 +70,7 @@ print '<tr class="oddeven">';
 print '<td>';
 print '<form method="post" action="">';
 print '<input type="hidden" name="action" value="update">';
+print '<input type="hidden" name="token" value="' . newToken() . '">';
 print '<div class="info">' . $langs->trans("UpdatePagecDescription") . '</div>';
 print '<br>';
 print '<input type="submit" class="button button-primary" value="' . $langs->trans("LaunchUpdate") . '" onclick="return confirm(\'' . $langs->trans("ConfirmUpdate") . '\')">';
@@ -86,9 +95,10 @@ if (!empty($backup_files)) {
     }
     print '<br>';
     print '<form method="post" action="">';
-    print '<input type="hidden" name="action" value="restore">';
-    print '<input type="submit" class="button button-warning" value="Restaurer les données" onclick="return confirm(\'Êtes-vous sûr de vouloir restaurer les données ? Cela peut écraser des données récentes.\')">';
-    print '</form>';
+print '<input type="hidden" name="action" value="restore">';
+print '<input type="hidden" name="token" value="' . newToken() . '">';
+print '<input type="submit" class="button button-warning" value="Restaurer les données" onclick="return confirm(\'Êtes-vous sûr de vouloir restaurer les données ? Cela peut écraser des données récentes.\')">';
+print '</form>';
     print '</td>';
     print '</tr>';
 }
