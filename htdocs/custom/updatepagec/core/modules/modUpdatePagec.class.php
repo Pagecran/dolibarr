@@ -23,7 +23,7 @@ class modUpdatePagec extends DolibarrModules
         $this->conflictwith = array();
         $this->requiredby = array();
         $this->phpmin = array(7,0);
-        $this->langfiles = array();
+        $this->langfiles = array("updatepagec@updatepagec");
     }
 
     public function init($options = '')

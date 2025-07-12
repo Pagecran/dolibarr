@@ -1,0 +1,22 @@
+# Fichier de traductions françaises pour le module UpdatePagec
+# Copyright (C) 2024 Pagecran
+
+# Module
+UpdatePagec=UpdatePagec
+UpdatePagecSetup=Configuration UpdatePagec
+UpdatePagecConfiguration=Configuration de la mise à jour
+UpdatePagecDescription=Ce module permet de lancer le script de mise à jour Pagecran depuis l'interface Dolibarr.
+
+# Actions
+LaunchUpdate=Lancer la mise à jour
+ConfirmUpdate=Êtes-vous sûr de vouloir lancer la mise à jour ?
+
+# Messages
+UpdateLaunchedSuccessfully=Mise à jour lancée avec succès
+UpdateFailed=Échec de la mise à jour
+InsufficientPermissions=Permissions insuffisantes
+ScriptNotFound=Script de mise à jour non trouvé
+NoLogsAvailable=Aucun log disponible
+
+# Logs
+UpdateLogs=Logs de mise à jour 

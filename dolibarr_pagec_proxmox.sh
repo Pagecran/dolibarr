@@ -104,17 +104,12 @@ else
     git clone -b $DOLIBARR_BRANCH $DOLIBARR_REPO $INSTALL_DIR
 fi
 
-# 8. Restore configuration if updating
+# 8. Backup files are kept for optional restoration via web interface
 if [ "$UPDATE_MODE" = true ]; then
-    echo "8. Restoring configuration..."
-    if [ -f "/tmp/dolibarr_conf_backup.php" ]; then
-        cp /tmp/dolibarr_conf_backup.php $INSTALL_DIR/htdocs/conf/conf.php
-    fi
-    if [ -f "/tmp/dolibarr_documents_backup.tar.gz" ]; then
-        tar -xzf /tmp/dolibarr_documents_backup.tar.gz -C $INSTALL_DIR
-    fi
-    # Cleanup backup files
-    rm -f /tmp/dolibarr_conf_backup.php /tmp/dolibarr_documents_backup.tar.gz
+    echo "8. Backup files preserved for optional restoration..."
+    echo "   - Configuration backup: /tmp/dolibarr_conf_backup.php"
+    echo "   - Documents backup: /tmp/dolibarr_documents_backup.tar.gz"
+    echo "   - Use the web interface to restore if needed"
 fi
 
 # 9. Set permissions
