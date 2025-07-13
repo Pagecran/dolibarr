@@ -96,11 +96,12 @@ class UpdatePagec
             return $result;
         }
         $this->log("INFO", "Début de la mise à jour (git pull uniquement)");
-        $dolibarr_root = dirname(DOL_DOCUMENT_ROOT);
-        $this->log("DEBUG", "Chemin du dépôt : $dolibarr_root");
+        global $conf;
+        $git_repo_path = !empty($conf->global->UPDATEPAGEC_GIT_REPO_PATH) ? $conf->global->UPDATEPAGEC_GIT_REPO_PATH : dirname(DOL_DOCUMENT_ROOT);
+        $this->log("DEBUG", "Chemin du dépôt : $git_repo_path");
         $whoami = trim(shell_exec('whoami'));
         $this->log("DEBUG", "Utilisateur courant : $whoami");
-        $command = "cd " . escapeshellarg($dolibarr_root) . " && git pull 2>&1";
+        $command = "cd " . escapeshellarg($git_repo_path) . " && git pull 2>&1";
         $output = shell_exec($command);
         $this->log("DEBUG", "Sortie du git pull :\n" . $output);
         $result['output'] = $output;
@@ -393,11 +394,12 @@ class UpdatePagec
         if ($type == 'sql') {
             $this->log("INFO", "Début restauration base depuis $file");
             $dbtype = $this->db->type;
-            // Récupération FIABLE des credentials
-            $dbuser = !empty($this->db->user) ? $this->db->user : (property_exists($this->db, 'dbuser') ? $this->db->dbuser : '');
-            $dbpass = !empty($this->db->pass) ? $this->db->pass : (property_exists($this->db, 'dbpass') ? $this->db->dbpass : '');
-            $dbname = !empty($this->db->database_name) ? $this->db->database_name : (property_exists($this->db, 'dbname') ? $this->db->dbname : '');
-            $dbhost = !empty($this->db->host) ? $this->db->host : (property_exists($this->db, 'dbhost') ? $this->db->dbhost : '');
+            // Récupération des credentials depuis les variables globales de configuration
+            global $dolibarr_main_db_user, $dolibarr_main_db_pass, $dolibarr_main_db_name, $dolibarr_main_db_host;
+            $dbuser = $dolibarr_main_db_user;
+            $dbpass = $dolibarr_main_db_pass;
+            $dbname = $dolibarr_main_db_name;
+            $dbhost = $dolibarr_main_db_host;
             $this->log("DEBUG", "dbuser=$dbuser dbpass=".(strlen($dbpass)?'***':'')." dbname=$dbname dbhost=$dbhost");
             if ($dbtype == 'pgsql') {
                 $cmd = "PGPASSWORD=".escapeshellarg($dbpass)." psql -U ".escapeshellarg($dbuser)." -h ".escapeshellarg($dbhost)." -d ".escapeshellarg($dbname)." -f ".escapeshellarg($file);
@@ -463,10 +465,12 @@ class UpdatePagec
         // 2. Restauration base
         $this->log("INFO", "Début restauration base depuis $lastsql");
         $dbtype = $this->db->type;
-        $dbuser = $this->db->user;
-        $dbpass = $this->db->pass;
-        $dbname = $this->db->database_name;
-        $dbhost = $this->db->host;
+        // Récupération des credentials depuis les variables globales de configuration
+        global $dolibarr_main_db_user, $dolibarr_main_db_pass, $dolibarr_main_db_name, $dolibarr_main_db_host;
+        $dbuser = $dolibarr_main_db_user;
+        $dbpass = $dolibarr_main_db_pass;
+        $dbname = $dolibarr_main_db_name;
+        $dbhost = $dolibarr_main_db_host;
         if ($dbtype == 'pgsql') {
             $cmd = "PGPASSWORD=".escapeshellarg($dbpass)." psql -U ".escapeshellarg($dbuser)." -h ".escapeshellarg($dbhost)." -d ".escapeshellarg($dbname)." -f ".escapeshellarg($lastsql);
         } else {

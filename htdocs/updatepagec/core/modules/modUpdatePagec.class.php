@@ -1,5 +1,5 @@
 <?php
-// htdocs/custom/updatepagec/core/modules/modUpdatePagec.class.php
+// htdocs/updatepagec/core/modules/modUpdatePagec.class.php
 
 include_once DOL_DOCUMENT_ROOT . '/core/modules/DolibarrModules.class.php';
 
@@ -10,8 +10,8 @@ class modUpdatePagec extends DolibarrModules
         global $langs, $conf;
 
         $this->db = $db;
-        $this->numero = 500000;
-        $this->family = "other";
+        $this->numero = 500001;
+        $this->family = "base";
         $this->module_position = '90';
         $this->name = preg_replace('/^mod/i', '', get_class($this));
         $this->description = "Module de mise à jour Pagecran";
@@ -34,7 +34,7 @@ class modUpdatePagec extends DolibarrModules
             'titre'=>'UpdatePagec',
             'mainmenu'=>'home',
             'leftmenu'=>'updatepagec',
-            'url'=>'/custom/updatepagec/admin/update.php',
+            'url'=>'/updatepagec/admin/update.php',
             'langs'=>'updatepagec@updatepagec',
             'position'=>1000,
             'enabled'=>'$conf->updatepagec->enabled',
@@ -61,7 +61,7 @@ class modUpdatePagec extends DolibarrModules
         // Menu dans Outils d'administration
         $menu[$r][0] = 'top';
         $menu[$r][1] = $langs->trans('UpdatePagec');
-        $menu[$r][2] = '/custom/updatepagec/admin/update.php';
+        $menu[$r][2] = '/updatepagec/admin/update.php';
         $menu[$r][3] = 1;
         $menu[$r][4] = 'updatepagec';
         $menu[$r][5] = 'updatepagec';

@@ -1,7 +1,10 @@
 <?php
-require '../../../main.inc.php';
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+require '../../main.inc.php';
 require_once DOL_DOCUMENT_ROOT.'/core/lib/admin.lib.php';
-require_once DOL_DOCUMENT_ROOT.'/custom/updatepagec/lib/updatepagec.lib.php';
+require_once DOL_DOCUMENT_ROOT.'/updatepagec/lib/updatepagec.lib.php';
 
 $langs->load("updatepagec@updatepagec");
 
@@ -101,6 +104,15 @@ if ($action == 'deletebackup') {
     }
 }
 
+if (
+    GETPOST('action') === 'set_git_repo_path'
+    && GETPOST('token') == newToken()
+) {
+    $path = trim(GETPOST('git_repo_path', 'alphanohtml'));
+    dolibarr_set_const($db, 'UPDATEPAGEC_GIT_REPO_PATH', $path, 'chaine', 0, '', $conf->entity);
+    setEventMessages("Chemin du repository Git enregistré", null, 'mesgs');
+}
+
 // Récupération des logs
 $updatepagec = new UpdatePagec($db);
 $logs = $updatepagec->getLogs(50); // 50 dernières lignes
@@ -115,25 +127,31 @@ $linkback = '<a href="' . DOL_URL_ROOT . '/admin/modules.php?restore_lastsearch_
 
 print load_fiche_titre($langs->trans("UpdatePagecSetup"), $linkback, 'title_setup');
 
-// Affichage principal en colonne unique : logs, puis sauvegardes, puis upload/avertissement
-
-// Bouton de mise à jour
-print '<form method="post" action="" style="margin-bottom:24px">';
-print '<input type="hidden" name="action" value="update">';
+// Champ de configuration du chemin du repo git
+print '<form method="post" action="" style="margin-bottom:16px;">';
+print '<label for="git_repo_path"><b>Chemin du repository Git à utiliser pour la mise à jour :</b></label> ';
+print '<input type="text" id="git_repo_path" name="git_repo_path" value="'.dol_escape_htmltag(isset($conf->global->UPDATEPAGEC_GIT_REPO_PATH) ? $conf->global->UPDATEPAGEC_GIT_REPO_PATH : '').'" size="60"> ';
+print '<input type="hidden" name="action" value="set_git_repo_path">';
 print '<input type="hidden" name="token" value="' . newToken() . '">';
-print '<input type="submit" class="button button-primary" value="Lancer la mise à jour (git pull)" onclick="return confirm(\'Confirmer la mise à jour ?\')">';
+print '<input type="submit" class="button" value="Enregistrer">';
 print '</form>';
 
-// Titre logs
-print '<div style="font-weight:bold; margin-bottom:4px;">Logs de mise à jour</div>';
+// Bouton de mise à jour (SANS cadre)
+print '<form method="post" action="" style="margin-bottom:24px; text-align:center;">';
+print '<input type="hidden" name="action" value="update">';
+print '<input type="hidden" name="token" value="' . newToken() . '">';
+print '<input type="submit" class="button button-primary" value="LANCER LA MISE À JOUR (GIT PULL)" onclick="return confirm(\'Confirmer la mise à jour ?\')">';
+print '</form>';
+
 // Logs
+print '<h3>Logs de mise à jour</h3>';
 if ($logs) {
-    print '<div style="margin-bottom:24px; position:relative;">';
-    print '<pre style="max-height: 300px; overflow-y: auto; background: #f5f5f5; padding: 10px; border: 1px solid #ddd;">';
+    print '<pre style="max-height: 300px; max-width: 100%; overflow-y: auto; overflow-x: auto; background: #f5f5f5; padding: 10px; border: 1px solid #ddd; margin:0; white-space: pre-wrap; word-wrap: break-word;">';
     print $updatepagec->formatOutput($logs);
     print '</pre>';
-    // Bouton vider les logs en bas à droite, taille réduite
-    print '<form method="post" action="" style="position:absolute; right:0; bottom:0; margin:8px;">';
+    // Bouton vider les logs à droite
+    print '<div style="text-align:right;">';
+    print '<form method="post" action="" style="display:inline;">';
     print '<input type="hidden" name="action" value="clearlogs">';
     print '<input type="hidden" name="token" value="' . newToken() . '">';
     print '<input type="submit" class="button" style="font-size:0.8em; padding:2px 8px;" value="VIDER LES LOGS" onclick="return confirm(\'Êtes-vous sûr de vouloir vider les logs ?\')">';
@@ -141,14 +159,21 @@ if ($logs) {
     print '</div>';
 }
 
-// Titre du tableau
-print '<div style="font-weight:bold; margin-bottom:8px;">Sauvegardes des données utilisateurs</div>';
-print '<div class="div-table-responsive">';
-print '<table class="noborder centpercent">';
-print '<tr class="liste_titre">';
-print '<th>Nom</th><th>Taille</th><th>Date</th><th>Actions</th>';
-print '</tr>';
+// Tableau sauvegardes
+print '<h3>Sauvegardes des données utilisateurs</h3>';
+
+// Avertissement (SANS cadre) - seulement si il y a des backups
 if (!empty($backup_files)) {
+    print '<div class="warning" style="margin:16px 0;">';
+    print '<strong>Attention :</strong> La restauration peut écraser des données récentes.';
+    print '</div>';
+}
+
+if (!empty($backup_files)) {
+    print '<table class="noborder">';
+    print '<tr class="liste_titre">';
+    print '<th>Nom</th><th>Taille</th><th>Date</th><th>Actions</th>';
+    print '</tr>';
     foreach ($backup_files as $file) {
         $basename = basename($file);
         $size = function_exists('dol_print_size') ? dol_print_size(filesize($file), 1, 1) : round(filesize($file)/1024).' Ko';
@@ -179,49 +204,29 @@ if (!empty($backup_files)) {
         print '</td>';
         print '</tr>';
     }
+    print '</table>';
 } else {
-    print '<tr><td colspan="4" class="opacitymedium">Aucun fichier de sauvegarde trouvé.</td></tr>';
+    print '<p class="opacitymedium">Aucun fichier de sauvegarde trouvé.</p>';
 }
-print '</table>';
-print '</div>';
-// Section upload + avertissement SOUS le tableau
-// Formulaire d'upload
-print '<div class="form-upload-backup">';
-print '<form method="post" enctype="multipart/form-data" action="">';
+
+// Upload (SANS cadre)
+print '<form method="post" enctype="multipart/form-data" action="" style="margin-top:16px;">';
+print '<label>Uploader un fichier d\'archive externe</label><br>';
 print '<input type="hidden" name="action" value="uploadbackup">';
 print '<input type="hidden" name="token" value="' . newToken() . '">';
-print '<label>Uploader un fichier d\'archive externe</label><br>';
 print '<input type="file" name="backupfile"> ';
 print '<input type="submit" class="button" value="UPLOADER">';
 print '</form>';
-print '</div>';
-// Avertissement restauration
-print '<div class="warning" style="margin:16px 0;">';
-print '<strong>Attention :</strong> La restauration peut écraser des données récentes.';
-print '</div>';
-// Espace après l'avertissement
-print '<div style="margin-top:24px"></div>';
 
-// Espace avant la section informations système
-print '<div style="height:32px;"></div>';
-// Section des informations système
-print '<tr class="liste_titre">';
-print '<td style="margin-top:24px; padding-top:24px;">Informations système</td>';
-print '</tr>';
-print '<tr class="oddeven">';
-print '<td>';
+// Infos système
+print '<h3>Informations système</h3>';
+print '<table class="noborder">';
 $sysinfo = $updatepagec->getSystemInfo();
-print '<table class="noborder centpercent">';
-print '<tr><td>Fichier de logs:</td><td>' . $sysinfo['log_file'] . ' (' . ($sysinfo['log_writable'] ? 'Écriture autorisée' : 'Écriture interdite') . ')</td></tr>';
-print '<tr><td>Utilisateur:</td><td>' . $sysinfo['user'] . ' (' . ($sysinfo['user_admin'] ? 'Admin' : 'Non admin') . ')</td></tr>';
-print '<tr><td>Version Dolibarr:</td><td>' . $sysinfo['dolibarr_version'] . '</td></tr>';
-print '<tr><td>Version PHP:</td><td>' . $sysinfo['php_version'] . '</td></tr>';
+print '<tr class="oddeven"><td>Fichier de logs:</td><td>' . $sysinfo['log_file'] . ' (' . ($sysinfo['log_writable'] ? 'Écriture autorisée' : 'Écriture interdite') . ')</td></tr>';
+print '<tr class="oddeven"><td>Utilisateur:</td><td>' . $sysinfo['user'] . ' (' . ($sysinfo['user_admin'] ? 'Admin' : 'Non admin') . ')</td></tr>';
+print '<tr class="oddeven"><td>Version Dolibarr:</td><td>' . $sysinfo['dolibarr_version'] . '</td></tr>';
+print '<tr class="oddeven"><td>Version PHP:</td><td>' . $sysinfo['php_version'] . '</td></tr>';
 print '</table>';
-print '</td>';
-print '</tr>';
-
-print '</table>';
-print '</div>';
 
 llxFooter();
 $db->close();
