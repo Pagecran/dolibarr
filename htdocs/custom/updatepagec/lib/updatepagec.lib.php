@@ -400,7 +400,11 @@ class UpdatePagec
             if ($dbtype == 'pgsql') {
                 $cmd = "PGPASSWORD=".escapeshellarg($dbpass)." psql -U ".escapeshellarg($dbuser)." -h ".escapeshellarg($dbhost)." -d ".escapeshellarg($dbname)." -f ".escapeshellarg($file);
             } else {
-                $cmd = "mysql -u".escapeshellarg($dbuser)." -p".escapeshellarg($dbpass)." ".escapeshellarg($dbname)." < ".escapeshellarg($file);
+                $cmd = "mysql -u".escapeshellarg($dbuser);
+                if ($dbpass !== '') {
+                    $cmd .= " -p" . escapeshellarg($dbpass);
+                }
+                $cmd .= " ".escapeshellarg($dbname)." < ".escapeshellarg($file);
             }
             $output = shell_exec($cmd . " 2>&1");
             $this->log("DEBUG", "Sortie restauration base :\n" . $output);
@@ -464,7 +468,11 @@ class UpdatePagec
         if ($dbtype == 'pgsql') {
             $cmd = "PGPASSWORD=".escapeshellarg($dbpass)." psql -U ".escapeshellarg($dbuser)." -h ".escapeshellarg($dbhost)." -d ".escapeshellarg($dbname)." -f ".escapeshellarg($lastsql);
         } else {
-            $cmd = "mysql -u".escapeshellarg($dbuser)." -p".escapeshellarg($dbpass)." ".escapeshellarg($dbname)." < ".escapeshellarg($lastsql);
+            $cmd = "mysql -u".escapeshellarg($dbuser);
+            if ($dbpass !== '') {
+                $cmd .= " -p" . escapeshellarg($dbpass);
+            }
+            $cmd .= " ".escapeshellarg($dbname)." < ".escapeshellarg($lastsql);
         }
         $output = shell_exec($cmd . " 2>&1");
         $this->log("DEBUG", "Sortie restauration base :\n" . $output);
