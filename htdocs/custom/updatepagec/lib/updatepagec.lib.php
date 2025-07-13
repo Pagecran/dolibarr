@@ -393,10 +393,12 @@ class UpdatePagec
         if ($type == 'sql') {
             $this->log("INFO", "Début restauration base depuis $file");
             $dbtype = $this->db->type;
-            $dbuser = $this->db->user;
-            $dbpass = $this->db->pass;
-            $dbname = $this->db->database_name;
-            $dbhost = $this->db->host;
+            // Récupération FIABLE des credentials
+            $dbuser = !empty($this->db->user) ? $this->db->user : (property_exists($this->db, 'dbuser') ? $this->db->dbuser : '');
+            $dbpass = !empty($this->db->pass) ? $this->db->pass : (property_exists($this->db, 'dbpass') ? $this->db->dbpass : '');
+            $dbname = !empty($this->db->database_name) ? $this->db->database_name : (property_exists($this->db, 'dbname') ? $this->db->dbname : '');
+            $dbhost = !empty($this->db->host) ? $this->db->host : (property_exists($this->db, 'dbhost') ? $this->db->dbhost : '');
+            $this->log("DEBUG", "dbuser=$dbuser dbpass=".(strlen($dbpass)?'***':'')." dbname=$dbname dbhost=$dbhost");
             if ($dbtype == 'pgsql') {
                 $cmd = "PGPASSWORD=".escapeshellarg($dbpass)." psql -U ".escapeshellarg($dbuser)." -h ".escapeshellarg($dbhost)." -d ".escapeshellarg($dbname)." -f ".escapeshellarg($file);
             } else {
