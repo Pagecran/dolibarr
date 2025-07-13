@@ -83,6 +83,24 @@ if ($action == 'restore') {
     }
 }
 
+// Gestion de la suppression d'un backup
+if ($action == 'deletebackup') {
+    if (GETPOST('token') == newToken()) {
+        $file = GETPOST('file');
+        if ($file && file_exists($file)) {
+            if (unlink($file)) {
+                setEventMessages("Fichier supprimé : ".basename($file), null, 'mesgs');
+            } else {
+                setEventMessages("Erreur lors de la suppression du fichier", null, 'errors');
+            }
+        } else {
+            setEventMessages("Fichier non trouvé", null, 'errors');
+        }
+    } else {
+        setEventMessages("Erreur de sécurité : token CSRF invalide", null, 'errors');
+    }
+}
+
 // Récupération des logs
 $updatepagec = new UpdatePagec($db);
 $logs = $updatepagec->getLogs(50); // 50 dernières lignes
@@ -97,112 +115,98 @@ $linkback = '<a href="' . DOL_URL_ROOT . '/admin/modules.php?restore_lastsearch_
 
 print load_fiche_titre($langs->trans("UpdatePagecSetup"), $linkback, 'title_setup');
 
-print '<div class="div-table-responsive-no-min">';
-print '<table class="noborder centpercent">';
+// Affichage principal en colonne unique : logs, puis sauvegardes, puis upload/avertissement
 
-// Section de mise à jour
-print '<tr class="liste_titre">';
-print '<td>' . $langs->trans("UpdatePagecConfiguration") . '</td>';
-print '</tr>';
-
-print '<tr class="oddeven">';
-print '<td>';
-print '<form method="post" action="">';
+// Bouton de mise à jour
+print '<form method="post" action="" style="margin-bottom:24px">';
 print '<input type="hidden" name="action" value="update">';
 print '<input type="hidden" name="token" value="' . newToken() . '">';
-print '<div class="info">' . $langs->trans("UpdatePagecDescription") . '</div>';
-print '<br>';
-print '<input type="submit" class="button button-primary" value="' . $langs->trans("LaunchUpdate") . '" onclick="return confirm(\'' . $langs->trans("ConfirmUpdate") . '\')">';
+print '<input type="submit" class="button button-primary" value="Lancer la mise à jour (git pull)" onclick="return confirm(\'Confirmer la mise à jour ?\')">';
 print '</form>';
-print '</td>';
-print '</tr>';
 
-// Section des backups
+// Titre logs
+print '<div style="font-weight:bold; margin-bottom:4px;">Logs de mise à jour</div>';
+// Logs
+if ($logs) {
+    print '<div style="margin-bottom:24px; position:relative;">';
+    print '<pre style="max-height: 300px; overflow-y: auto; background: #f5f5f5; padding: 10px; border: 1px solid #ddd;">';
+    print $updatepagec->formatOutput($logs);
+    print '</pre>';
+    // Bouton vider les logs en bas à droite, taille réduite
+    print '<form method="post" action="" style="position:absolute; right:0; bottom:0; margin:8px;">';
+    print '<input type="hidden" name="action" value="clearlogs">';
+    print '<input type="hidden" name="token" value="' . newToken() . '">';
+    print '<input type="submit" class="button" style="font-size:0.8em; padding:2px 8px;" value="VIDER LES LOGS" onclick="return confirm(\'Êtes-vous sûr de vouloir vider les logs ?\')">';
+    print '</form>';
+    print '</div>';
+}
+
+// Titre du tableau
+print '<div style="font-weight:bold; margin-bottom:8px;">Sauvegardes des données utilisateurs</div>';
+print '<div class="div-table-responsive">';
+print '<table class="noborder centpercent">';
+print '<tr class="liste_titre">';
+print '<th>Nom</th><th>Taille</th><th>Date</th><th>Actions</th>';
+print '</tr>';
 if (!empty($backup_files)) {
-    print '<tr class="liste_titre">';
-    print '<td>Fichiers de sauvegarde disponibles</td>';
-    print '</tr>';
-    print '<tr class="oddeven">';
-    print '<td>';
-    print '<ul>';
     foreach ($backup_files as $file) {
-        $type = (strpos($file, 'backup_') !== false ? 'sql' : 'documents');
-        print '<li>' . basename($file) . ' (' . date('Y-m-d H:i:s', filemtime($file)) . ')';
-        print ' <form method="post" action="" style="display:inline">';
+        $basename = basename($file);
+        $size = function_exists('dol_print_size') ? dol_print_size(filesize($file), 1, 1) : round(filesize($file)/1024).' Ko';
+        $date = function_exists('dol_print_date') ? dol_print_date(filemtime($file), 'dayhour') : date('d/m/Y H:i', filemtime($file));
+        $type = (strpos($basename, 'backup_') !== false ? 'sql' : 'documents');
+        print '<tr class="oddeven">';
+        print '<td><i class="fa '.($type=='sql'?'fa-database':'fa-archive').'"></i> '.$basename.'</td>';
+        print '<td>'.$size.'</td>';
+        print '<td>'.$date.'</td>';
+        print '<td style="white-space:nowrap">';
+        // Télécharger
+        print '<a class="btn btn-default" href="'.DOL_URL_ROOT.'/document.php?modulepart=admin&file=backup/'.$basename.'" target="_blank"><i class="fa fa-download"></i></a> ';
+        // Restaurer (texte + icône, un seul bouton submit par formulaire)
+        print '<form method="post" action="" style="display:inline;margin:0;padding:0;">';
         print '<input type="hidden" name="action" value="restorefile">';
         print '<input type="hidden" name="file" value="' . htmlspecialchars($file) . '">';
         print '<input type="hidden" name="filetype" value="' . $type . '">';
         print '<input type="hidden" name="token" value="' . newToken() . '">';
-        print '<input type="submit" class="button" value="Restaurer" onclick="return confirm(\'Restaurer ce fichier ?\')">';
+        print '<button class="btn btn-warning" type="submit" onclick="return confirm(\'Restaurer ce fichier ?\')"><i class="fa fa-refresh"></i> Restaurer</button>';
+        print '</form> ';
+        // Supprimer
+        print '<form method="post" action="" style="display:inline;margin:0;padding:0;">';
+        print '<input type="hidden" name="action" value="deletebackup">';
+        print '<input type="hidden" name="file" value="' . htmlspecialchars($file) . '">';
+        print '<input type="hidden" name="token" value="' . newToken() . '">';
+        print '<button class="btn btn-danger" type="submit" onclick="return confirm(\'Supprimer ce fichier ?\')"><i class="fa fa-trash"></i></button>';
         print '</form>';
-        print '</li>';
+        print '</td>';
+        print '</tr>';
     }
-    print '</ul>';
-    print '</td>';
-    print '</tr>';
+} else {
+    print '<tr><td colspan="4" class="opacitymedium">Aucun fichier de sauvegarde trouvé.</td></tr>';
 }
+print '</table>';
+print '</div>';
+// Section upload + avertissement SOUS le tableau
 // Formulaire d'upload
-print '<tr class="liste_titre">';
-print '<td>Uploader un fichier d\'archive externe</td>';
-print '</tr>';
-print '<tr class="oddeven">';
-print '<td>';
+print '<div class="form-upload-backup">';
 print '<form method="post" enctype="multipart/form-data" action="">';
 print '<input type="hidden" name="action" value="uploadbackup">';
 print '<input type="hidden" name="token" value="' . newToken() . '">';
-print '<input type="file" name="backupfile">';
-print '<input type="submit" class="button" value="Uploader">';
+print '<label>Uploader un fichier d\'archive externe</label><br>';
+print '<input type="file" name="backupfile"> ';
+print '<input type="submit" class="button" value="UPLOADER">';
 print '</form>';
-print '</td>';
-print '</tr>';
+print '</div>';
+// Avertissement restauration
+print '<div class="warning" style="margin:16px 0;">';
+print '<strong>Attention :</strong> La restauration peut écraser des données récentes.';
+print '</div>';
+// Espace après l'avertissement
+print '<div style="margin-top:24px"></div>';
 
-// Section de restauration (si des backups existent)
-if (!empty($backup_files)) {
-    print '<tr class="liste_titre">';
-    print '<td>Restauration des données</td>';
-    print '</tr>';
-    print '<tr class="oddeven">';
-    print '<td>';
-    print '<div class="warning">';
-    print '<strong>Attention :</strong> La restauration peut écraser des données récentes.';
-    print '</div>';
-    print '<br>';
-    print '<strong>Fichiers de backup disponibles :</strong><br>';
-    foreach ($backup_files as $file) {
-        print '- ' . basename($file) . ' (' . date('Y-m-d H:i:s', filemtime($file)) . ')<br>';
-    }
-    print '<br>';
-    print '<form method="post" action="">';
-print '<input type="hidden" name="action" value="restore">';
-print '<input type="hidden" name="token" value="' . newToken() . '">';
-print '<input type="submit" class="button button-warning" value="Restaurer les données" onclick="return confirm(\'Êtes-vous sûr de vouloir restaurer les données ? Cela peut écraser des données récentes.\')">';
-print '</form>';
-    print '</td>';
-    print '</tr>';
-}
-
-// Section des logs
-if ($logs) {
-    print '<tr class="liste_titre">';
-    print '<td>' . $langs->trans("UpdateLogs") . '</td>';
-    print '</tr>';
-    print '<tr class="oddeven">';
-    print '<td>';
-    print '<form method="post" action="">';
-    print '<input type="hidden" name="action" value="clearlogs">';
-    print '<input type="hidden" name="token" value="' . newToken() . '">';
-    print '<input type="submit" class="button" value="Vider les logs" onclick="return confirm(\'Êtes-vous sûr de vouloir vider les logs ?\')">';
-    print '</form>';
-    print '<pre style="max-height: 300px; overflow-y: auto; background: #f5f5f5; padding: 10px; border: 1px solid #ddd;">';
-    print $updatepagec->formatOutput($logs);
-    print '</pre>';
-    print '</td>';
-    print '</tr>';
-}
-
+// Espace avant la section informations système
+print '<div style="height:32px;"></div>';
 // Section des informations système
 print '<tr class="liste_titre">';
-print '<td>Informations système</td>';
+print '<td style="margin-top:24px; padding-top:24px;">Informations système</td>';
 print '</tr>';
 print '<tr class="oddeven">';
 print '<td>';
@@ -222,3 +226,4 @@ print '</div>';
 llxFooter();
 $db->close();
 ?>
+
