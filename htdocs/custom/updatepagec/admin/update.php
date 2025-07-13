@@ -17,11 +17,50 @@ if ($action == 'update') {
     if (GETPOST('token') == newToken()) {
         $updatepagec = new UpdatePagec($db);
         $result = $updatepagec->launchUpdate();
-        
+        // Ne pas afficher de message de succès/échec, tout est dans les logs
+    } else {
+        setEventMessages("Erreur de sécurité : token CSRF invalide", null, 'errors');
+    }
+}
+
+if ($action == 'clearlogs') {
+    if (GETPOST('token') == newToken()) {
+        $updatepagec = new UpdatePagec($db);
+        $updatepagec->clearLogs();
+        setEventMessages("Logs vidés", null, 'mesgs');
+    } else {
+        setEventMessages("Erreur de sécurité : token CSRF invalide", null, 'errors');
+    }
+}
+
+if ($action == 'restorefile') {
+    if (GETPOST('token') == newToken()) {
+        $updatepagec = new UpdatePagec($db);
+        $file = GETPOST('file');
+        $type = GETPOST('filetype');
+        $result = $updatepagec->restoreBackupFile($file, $type);
         if ($result['success']) {
-            setEventMessages($langs->trans("UpdateLaunchedSuccessfully"), null, 'mesgs');
+            setEventMessages("Restauration effectuée depuis $file", null, 'mesgs');
         } else {
-            setEventMessages($langs->trans("UpdateFailed"), $result['errors'], 'errors');
+            setEventMessages("Erreur restauration : ".implode(' | ', $result['errors']), null, 'errors');
+        }
+    } else {
+        setEventMessages("Erreur de sécurité : token CSRF invalide", null, 'errors');
+    }
+}
+
+if ($action == 'uploadbackup') {
+    if (GETPOST('token') == newToken()) {
+        $updatepagec = new UpdatePagec($db);
+        if (!empty($_FILES['backupfile']['tmp_name'])) {
+            $dest = $conf->admin->dir_output.'/backup/' . basename($_FILES['backupfile']['name']);
+            if (move_uploaded_file($_FILES['backupfile']['tmp_name'], $dest)) {
+                setEventMessages("Fichier uploadé : $dest", null, 'mesgs');
+            } else {
+                setEventMessages("Erreur upload fichier", null, 'errors');
+            }
+        } else {
+            setEventMessages("Aucun fichier sélectionné", null, 'errors');
         }
     } else {
         setEventMessages("Erreur de sécurité : token CSRF invalide", null, 'errors');
@@ -49,7 +88,7 @@ $updatepagec = new UpdatePagec($db);
 $logs = $updatepagec->getLogs(50); // 50 dernières lignes
 
 // Vérification de l'existence des backups
-$backup_files = $updatepagec->getBackupFiles();
+$backup_files = $updatepagec->listBackups();
 
 // Affichage de la page
 llxHeader('', $langs->trans("UpdatePagecSetup"));
@@ -74,6 +113,45 @@ print '<input type="hidden" name="token" value="' . newToken() . '">';
 print '<div class="info">' . $langs->trans("UpdatePagecDescription") . '</div>';
 print '<br>';
 print '<input type="submit" class="button button-primary" value="' . $langs->trans("LaunchUpdate") . '" onclick="return confirm(\'' . $langs->trans("ConfirmUpdate") . '\')">';
+print '</form>';
+print '</td>';
+print '</tr>';
+
+// Section des backups
+if (!empty($backup_files)) {
+    print '<tr class="liste_titre">';
+    print '<td>Fichiers de sauvegarde disponibles</td>';
+    print '</tr>';
+    print '<tr class="oddeven">';
+    print '<td>';
+    print '<ul>';
+    foreach ($backup_files as $file) {
+        $type = (strpos($file, 'backup_') !== false ? 'sql' : 'documents');
+        print '<li>' . basename($file) . ' (' . date('Y-m-d H:i:s', filemtime($file)) . ')';
+        print ' <form method="post" action="" style="display:inline">';
+        print '<input type="hidden" name="action" value="restorefile">';
+        print '<input type="hidden" name="file" value="' . htmlspecialchars($file) . '">';
+        print '<input type="hidden" name="filetype" value="' . $type . '">';
+        print '<input type="hidden" name="token" value="' . newToken() . '">';
+        print '<input type="submit" class="button" value="Restaurer" onclick="return confirm(\'Restaurer ce fichier ?\')">';
+        print '</form>';
+        print '</li>';
+    }
+    print '</ul>';
+    print '</td>';
+    print '</tr>';
+}
+// Formulaire d'upload
+print '<tr class="liste_titre">';
+print '<td>Uploader un fichier d\'archive externe</td>';
+print '</tr>';
+print '<tr class="oddeven">';
+print '<td>';
+print '<form method="post" enctype="multipart/form-data" action="">';
+print '<input type="hidden" name="action" value="uploadbackup">';
+print '<input type="hidden" name="token" value="' . newToken() . '">';
+print '<input type="file" name="backupfile">';
+print '<input type="submit" class="button" value="Uploader">';
 print '</form>';
 print '</td>';
 print '</tr>';
@@ -110,6 +188,11 @@ if ($logs) {
     print '</tr>';
     print '<tr class="oddeven">';
     print '<td>';
+    print '<form method="post" action="">';
+    print '<input type="hidden" name="action" value="clearlogs">';
+    print '<input type="hidden" name="token" value="' . newToken() . '">';
+    print '<input type="submit" class="button" value="Vider les logs" onclick="return confirm(\'Êtes-vous sûr de vouloir vider les logs ?\')">';
+    print '</form>';
     print '<pre style="max-height: 300px; overflow-y: auto; background: #f5f5f5; padding: 10px; border: 1px solid #ddd;">';
     print $updatepagec->formatOutput($logs);
     print '</pre>';
@@ -125,7 +208,6 @@ print '<tr class="oddeven">';
 print '<td>';
 $sysinfo = $updatepagec->getSystemInfo();
 print '<table class="noborder centpercent">';
-print '<tr><td>Script de mise à jour:</td><td>' . $sysinfo['script_path'] . ' (' . ($sysinfo['script_exists'] ? 'Existe' : 'N\'existe pas') . ', ' . ($sysinfo['script_executable'] ? 'Exécutable' : 'Non exécutable') . ')</td></tr>';
 print '<tr><td>Fichier de logs:</td><td>' . $sysinfo['log_file'] . ' (' . ($sysinfo['log_writable'] ? 'Écriture autorisée' : 'Écriture interdite') . ')</td></tr>';
 print '<tr><td>Utilisateur:</td><td>' . $sysinfo['user'] . ' (' . ($sysinfo['user_admin'] ? 'Admin' : 'Non admin') . ')</td></tr>';
 print '<tr><td>Version Dolibarr:</td><td>' . $sysinfo['dolibarr_version'] . '</td></tr>';
