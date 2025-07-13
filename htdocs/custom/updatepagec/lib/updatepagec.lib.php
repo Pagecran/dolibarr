@@ -31,65 +31,80 @@ class UpdatePagec
         $this->script_url = 'https://raw.githubusercontent.com/Pagecran/dolibarr/Pagec/dolibarr_pagec_proxmox.sh';
     }
 
-    /**
-     * Lance la mise à jour
-     * 
-     * @return array Résultat de l'opération
-     */
+    public function createBackup()
+    {
+        global $conf;
+        $result = array('success' => false, 'errors' => array(), 'files' => array());
+        $backupdir = $conf->admin->dir_output.'/backup';
+        if (!is_dir($backupdir)) {
+            if (!dol_mkdir($backupdir)) {
+                $this->log("ERROR", "Impossible de créer le dossier de backup: $backupdir");
+                $result['errors'][] = "Impossible de créer le dossier de backup: $backupdir";
+                return $result;
+            }
+        }
+        $date = date('Ymd_His');
+        // 1. Dump SQL
+        require_once DOL_DOCUMENT_ROOT.'/core/class/utils.class.php';
+        $utils = new Utils($this->db);
+        $compression = 'none';
+        $what = $this->db->type == 'pgsql' ? 'postgresql' : 'mysql';
+        $file = "backup_{$date}.sql";
+        $filepath = $backupdir . '/' . $file;
+        $lowmemorydump = getDolGlobalString('MAIN_LOW_MEMORY_DUMP');
+        $this->log("INFO", "Début du dump SQL dans $filepath");
+        $utils->dumpDatabase($compression, $what, 0, $file, 0, 0, $lowmemorydump);
+        if (!empty($utils->error)) {
+            $this->log("ERROR", "Erreur dump SQL: " . $utils->error);
+            $result['errors'][] = $utils->error;
+        } else {
+            $this->log("INFO", "Dump SQL terminé: $filepath");
+            $result['files'][] = $filepath;
+        }
+        // 2. Archive documents
+        require_once DOL_DOCUMENT_ROOT.'/core/lib/files.lib.php';
+        $docdir = DOL_DATA_ROOT . '/documents';
+        $archivefile = "documents_{$date}.tar.gz";
+        $archivepath = $backupdir . '/' . $archivefile;
+        $this->log("INFO", "Début de l'archive des documents dans $archivepath");
+        $tarcmd = "tar -czf " . escapeshellarg($archivepath) . " -C " . escapeshellarg(DOL_DATA_ROOT) . " documents";
+        $output = shell_exec($tarcmd . " 2>&1");
+        if (!file_exists($archivepath)) {
+            $this->log("ERROR", "Erreur archive documents: $output");
+            $result['errors'][] = $output;
+        } else {
+            $this->log("INFO", "Archive documents terminée: $archivepath");
+            $result['files'][] = $archivepath;
+        }
+        $result['success'] = empty($result['errors']);
+        return $result;
+    }
+
     public function launchUpdate()
     {
         $result = array(
-            'success' => false,
             'output' => '',
+            'logs' => '',
             'errors' => array()
         );
-
-        // Validation des permissions
-        if (!$this->validatePermissions()) {
-            $result['errors'][] = $this->langs->trans("InsufficientPermissions");
+        $this->log("INFO", "Début de la sauvegarde automatique avant mise à jour");
+        $backup = $this->createBackup();
+        if (!$backup['success']) {
+            $result['errors'][] = "Erreur lors de la sauvegarde: " . implode(' | ', $backup['errors']);
+            $this->log("ERROR", "Abandon de la mise à jour car la sauvegarde a échoué");
+            $result['logs'] = $this->getLogs(50);
             return $result;
         }
-
-        // Validation du script
-        if (!$this->validateScript()) {
-            $result['errors'][] = $this->langs->trans("ScriptNotFound");
-            return $result;
-        }
-
-        // Log du début
-        $this->log("INFO", "Début de la mise à jour Pagecran");
-
-        // Vérification de l'état Git avant mise à jour
-        $git_status = $this->getGitStatus();
-        $this->log("INFO", "État Git avant mise à jour: " . $git_status);
-
-        try {
-            // Exécution du script directement depuis GitHub
-            $command = "curl -s " . escapeshellarg($this->script_url) . " | bash 2>&1";
-            $output = shell_exec($command);
-            $return_code = $this->getLastReturnCode();
-
-            // Log du résultat
-            if ($return_code === 0) {
-                $this->log("INFO", "Mise à jour terminée avec succès");
-                
-                // Vérification de l'état Git après mise à jour
-                $git_status_after = $this->getGitStatus();
-                $this->log("INFO", "État Git après mise à jour: " . $git_status_after);
-                
-                $result['success'] = true;
-            } else {
-                $this->log("ERROR", "Mise à jour échouée (code: $return_code)");
-                $result['errors'][] = "Code de retour: $return_code";
-            }
-
-            $result['output'] = $output;
-
-        } catch (Exception $e) {
-            $this->log("ERROR", "Exception lors de la mise à jour: " . $e->getMessage());
-            $result['errors'][] = $e->getMessage();
-        }
-
+        $this->log("INFO", "Début de la mise à jour (git pull uniquement)");
+        $dolibarr_root = dirname(DOL_DOCUMENT_ROOT);
+        $this->log("DEBUG", "Chemin du dépôt : $dolibarr_root");
+        $whoami = trim(shell_exec('whoami'));
+        $this->log("DEBUG", "Utilisateur courant : $whoami");
+        $command = "cd " . escapeshellarg($dolibarr_root) . " && git pull 2>&1";
+        $output = shell_exec($command);
+        $this->log("DEBUG", "Sortie du git pull :\n" . $output);
+        $result['output'] = $output;
+        $result['logs'] = $this->getLogs(50);
         return $result;
     }
 
@@ -184,28 +199,13 @@ class UpdatePagec
         }
     }
 
-    /**
-     * Récupère le code de retour de la dernière commande
-     * 
-     * @return int Code de retour
-     */
-    private function getLastReturnCode()
+    public function clearLogs()
     {
-        return $this->getLastExitCode();
+        if (file_exists($this->logfile)) {
+            unlink($this->logfile);
+        }
     }
 
-    /**
-     * Récupère le code de sortie de la dernière commande
-     * 
-     * @return int Code de sortie
-     */
-    private function getLastExitCode()
-    {
-        // Cette méthode simule la récupération du code de retour
-        // En réalité, shell_exec ne retourne pas le code de sortie
-        // On utilise une approche alternative
-        return 0; // Par défaut, on considère que ça s'est bien passé
-    }
 
     /**
      * Récupère l'état Git du répertoire
@@ -261,14 +261,7 @@ class UpdatePagec
      */
     public function getSystemInfo()
     {
-        // Test de l'accessibilité de l'URL GitHub
-        $headers = get_headers($this->script_url);
-        $script_accessible = $headers && strpos($headers[0], '200') !== false;
-        
         return array(
-            'script_path' => $this->script_url,
-            'script_exists' => $script_accessible,
-            'script_executable' => $script_accessible,
             'log_file' => $this->logfile,
             'log_writable' => is_writable(dirname($this->logfile)),
             'user' => $this->user->login,
@@ -386,6 +379,103 @@ class UpdatePagec
             $result['errors'][] = $e->getMessage();
         }
 
+        return $result;
+    }
+
+    public function restoreBackupFile($file, $type)
+    {
+        $result = array('success' => false, 'output' => '', 'errors' => array());
+        if (!file_exists($file)) {
+            $result['errors'][] = "Fichier non trouvé : $file";
+            $this->log("ERROR", "Fichier non trouvé : $file");
+            return $result;
+        }
+        if ($type == 'sql') {
+            $this->log("INFO", "Début restauration base depuis $file");
+            $dbtype = $this->db->type;
+            $dbuser = $this->db->user;
+            $dbpass = $this->db->pass;
+            $dbname = $this->db->database_name;
+            $dbhost = $this->db->host;
+            if ($dbtype == 'pgsql') {
+                $cmd = "PGPASSWORD=".escapeshellarg($dbpass)." psql -U ".escapeshellarg($dbuser)." -h ".escapeshellarg($dbhost)." -d ".escapeshellarg($dbname)." -f ".escapeshellarg($file);
+            } else {
+                $cmd = "mysql -u".escapeshellarg($dbuser)." -p".escapeshellarg($dbpass)." ".escapeshellarg($dbname)." < ".escapeshellarg($file);
+            }
+            $output = shell_exec($cmd . " 2>&1");
+            $this->log("DEBUG", "Sortie restauration base :\n" . $output);
+            $result['output'] = $output;
+            $result['success'] = true;
+        } elseif ($type == 'documents') {
+            $this->log("INFO", "Début restauration documents depuis $file");
+            $docdir = DOL_DATA_ROOT . '/documents';
+            $tarcmd = "tar -xzf " . escapeshellarg($file) . " -C " . escapeshellarg(DOL_DATA_ROOT);
+            $output = shell_exec($tarcmd . " 2>&1");
+            $this->log("DEBUG", "Sortie restauration documents :\n" . $output);
+            $result['output'] = $output;
+            $result['success'] = true;
+        } else {
+            $result['errors'][] = "Type de fichier inconnu : $type";
+            $this->log("ERROR", "Type de fichier inconnu : $type");
+        }
+        return $result;
+    }
+
+    public function listBackups()
+    {
+        global $conf;
+        $backupdir = $conf->admin->dir_output.'/backup';
+        $files = array();
+        if (is_dir($backupdir)) {
+            foreach (scandir($backupdir) as $file) {
+                if (preg_match('/^(backup_\d{8}_\d{6}\.sql|documents_\d{8}_\d{6}\.tar\.gz)$/', $file)) {
+                    $files[] = $backupdir . '/' . $file;
+                }
+            }
+        }
+        usort($files, function($a, $b) { return filemtime($b) - filemtime($a); });
+        return $files;
+    }
+
+    public function restoreLastBackup()
+    {
+        global $conf;
+        $backupdir = $conf->admin->dir_output.'/backup';
+        $result = array('success' => false, 'output' => '', 'errors' => array());
+        // 1. Trouver le dernier dump SQL
+        $sqlfiles = glob($backupdir . '/backup_*.sql');
+        $docfiles = glob($backupdir . '/documents_*.tar.gz');
+        if (!$sqlfiles || !$docfiles) {
+            $result['errors'][] = "Aucun fichier de sauvegarde trouvé dans $backupdir";
+            $this->log("ERROR", "Aucun fichier de sauvegarde trouvé dans $backupdir");
+            return $result;
+        }
+        usort($sqlfiles, function($a, $b) { return filemtime($b) - filemtime($a); });
+        usort($docfiles, function($a, $b) { return filemtime($b) - filemtime($a); });
+        $lastsql = $sqlfiles[0];
+        $lastdoc = $docfiles[0];
+        // 2. Restauration base
+        $this->log("INFO", "Début restauration base depuis $lastsql");
+        $dbtype = $this->db->type;
+        $dbuser = $this->db->user;
+        $dbpass = $this->db->pass;
+        $dbname = $this->db->database_name;
+        $dbhost = $this->db->host;
+        if ($dbtype == 'pgsql') {
+            $cmd = "PGPASSWORD=".escapeshellarg($dbpass)." psql -U ".escapeshellarg($dbuser)." -h ".escapeshellarg($dbhost)." -d ".escapeshellarg($dbname)." -f ".escapeshellarg($lastsql);
+        } else {
+            $cmd = "mysql -u".escapeshellarg($dbuser)." -p".escapeshellarg($dbpass)." ".escapeshellarg($dbname)." < ".escapeshellarg($lastsql);
+        }
+        $output = shell_exec($cmd . " 2>&1");
+        $this->log("DEBUG", "Sortie restauration base :\n" . $output);
+        // 3. Restauration documents
+        $this->log("INFO", "Début restauration documents depuis $lastdoc");
+        $docdir = DOL_DATA_ROOT . '/documents';
+        $tarcmd = "tar -xzf " . escapeshellarg($lastdoc) . " -C " . escapeshellarg(DOL_DATA_ROOT);
+        $output2 = shell_exec($tarcmd . " 2>&1");
+        $this->log("DEBUG", "Sortie restauration documents :\n" . $output2);
+        $result['success'] = true;
+        $result['output'] = "Base restaurée depuis $lastsql\nDocuments restaurés depuis $lastdoc";
         return $result;
     }
 } 
