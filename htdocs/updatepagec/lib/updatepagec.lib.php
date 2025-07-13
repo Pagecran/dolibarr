@@ -97,11 +97,20 @@ class UpdatePagec
         }
         $this->log("INFO", "Début de la mise à jour (git pull uniquement)");
         global $conf;
-        $git_repo_path = !empty($conf->global->UPDATEPAGEC_GIT_REPO_PATH) ? $conf->global->UPDATEPAGEC_GIT_REPO_PATH : dirname(DOL_DOCUMENT_ROOT);
-        $this->log("DEBUG", "Chemin du dépôt : $git_repo_path");
+        $git_repo_url = !empty($conf->global->UPDATEPAGEC_GIT_REPO_URL) ? $conf->global->UPDATEPAGEC_GIT_REPO_URL : 'https://github.com/Pagecran/dolibarr.git';
+        $git_branch = !empty($conf->global->UPDATEPAGEC_GIT_BRANCH) ? $conf->global->UPDATEPAGEC_GIT_BRANCH : 'Pagec';
+        $this->log("DEBUG", "URL du repository : $git_repo_url");
+        $this->log("DEBUG", "Branche : $git_branch");
         $whoami = trim(shell_exec('whoami'));
         $this->log("DEBUG", "Utilisateur courant : $whoami");
-        $command = "cd " . escapeshellarg($git_repo_path) . " && git pull 2>&1";
+        
+        // S'assurer que le remote origin pointe vers le bon repository
+        $command = "cd " . escapeshellarg(dirname(DOL_DOCUMENT_ROOT)) . " && git remote set-url origin " . escapeshellarg($git_repo_url) . " 2>&1";
+        $output = shell_exec($command);
+        $this->log("DEBUG", "Configuration du remote origin :\n" . $output);
+        
+        // Pull de la branche spécifiée
+        $command = "cd " . escapeshellarg(dirname(DOL_DOCUMENT_ROOT)) . " && git pull origin " . escapeshellarg($git_branch) . " 2>&1";
         $output = shell_exec($command);
         $this->log("DEBUG", "Sortie du git pull :\n" . $output);
         $result['output'] = $output;

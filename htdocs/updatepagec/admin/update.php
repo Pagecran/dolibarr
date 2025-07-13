@@ -8,6 +8,14 @@ require_once DOL_DOCUMENT_ROOT.'/updatepagec/lib/updatepagec.lib.php';
 
 $langs->load("updatepagec@updatepagec");
 
+// Initialisation des variables de configuration avec des valeurs par défaut
+if (!isset($conf->global->UPDATEPAGEC_GIT_REPO_URL)) {
+    dolibarr_set_const($db, 'UPDATEPAGEC_GIT_REPO_URL', 'https://github.com/Pagecran/dolibarr.git', 'chaine', 0, '', $conf->entity);
+}
+if (!isset($conf->global->UPDATEPAGEC_GIT_BRANCH)) {
+    dolibarr_set_const($db, 'UPDATEPAGEC_GIT_BRANCH', 'Pagec', 'chaine', 0, '', $conf->entity);
+}
+
 // Sécurité
 if (!$user->admin) accessforbidden();
 
@@ -105,12 +113,14 @@ if ($action == 'deletebackup') {
 }
 
 if (
-    GETPOST('action') === 'set_git_repo_path'
+    GETPOST('action') === 'set_git_config'
     && GETPOST('token') == newToken()
 ) {
-    $path = trim(GETPOST('git_repo_path', 'alphanohtml'));
-    dolibarr_set_const($db, 'UPDATEPAGEC_GIT_REPO_PATH', $path, 'chaine', 0, '', $conf->entity);
-    setEventMessages("Chemin du repository Git enregistré", null, 'mesgs');
+    $repo_url = trim(GETPOST('git_repo_url', 'alphanohtml'));
+    $branch = trim(GETPOST('git_branch', 'alphanohtml'));
+    dolibarr_set_const($db, 'UPDATEPAGEC_GIT_REPO_URL', $repo_url, 'chaine', 0, '', $conf->entity);
+    dolibarr_set_const($db, 'UPDATEPAGEC_GIT_BRANCH', $branch, 'chaine', 0, '', $conf->entity);
+    setEventMessages("Configuration Git enregistrée", null, 'mesgs');
 }
 
 // Récupération des logs
@@ -127,21 +137,30 @@ $linkback = '<a href="' . DOL_URL_ROOT . '/admin/modules.php?restore_lastsearch_
 
 print load_fiche_titre($langs->trans("UpdatePagecSetup"), $linkback, 'title_setup');
 
-// Champ de configuration du chemin du repo git
-print '<form method="post" action="" style="margin-bottom:16px;">';
-print '<label for="git_repo_path"><b>Chemin du repository Git à utiliser pour la mise à jour :</b></label> ';
-print '<input type="text" id="git_repo_path" name="git_repo_path" value="'.dol_escape_htmltag(isset($conf->global->UPDATEPAGEC_GIT_REPO_PATH) ? $conf->global->UPDATEPAGEC_GIT_REPO_PATH : '').'" size="60"> ';
-print '<input type="hidden" name="action" value="set_git_repo_path">';
-print '<input type="hidden" name="token" value="' . newToken() . '">';
-print '<input type="submit" class="button" value="Enregistrer">';
-print '</form>';
-
-// Bouton de mise à jour (SANS cadre)
-print '<form method="post" action="" style="margin-bottom:24px; text-align:center;">';
+// Bouton de mise à jour (aligné à gauche)
+print '<form method="post" action="" style="margin-bottom:16px; text-align:left;">';
 print '<input type="hidden" name="action" value="update">';
 print '<input type="hidden" name="token" value="' . newToken() . '">';
 print '<input type="submit" class="button button-primary" value="LANCER LA MISE À JOUR (GIT PULL)" onclick="return confirm(\'Confirmer la mise à jour ?\')">';
 print '</form>';
+
+// Configuration du repository Git distant
+print '<table class="noborder" style="width:100%; margin-bottom:0;">';
+print '<tr class="liste_titre">';
+print '<th>URL du repository Git distant</th><th>Branche à utiliser</th>';
+print '</tr>';
+print '<tr class="oddeven">';
+print '<td><input type="text" id="git_repo_url" name="git_repo_url" form="form_git_config" value="'.dol_escape_htmltag(isset($conf->global->UPDATEPAGEC_GIT_REPO_URL) ? $conf->global->UPDATEPAGEC_GIT_REPO_URL : '').'" size="60"></td>';
+print '<td><input type="text" id="git_branch" name="git_branch" form="form_git_config" value="'.dol_escape_htmltag(isset($conf->global->UPDATEPAGEC_GIT_BRANCH) ? $conf->global->UPDATEPAGEC_GIT_BRANCH : '').'" size="20"></td>';
+print '</tr>';
+print '</table>';
+print '<div style="text-align:right; margin-top:0; margin-bottom:0;">';
+print '<form method="post" action="" id="form_git_config" style="display:inline;">';
+print '<input type="hidden" name="action" value="set_git_config">';
+print '<input type="hidden" name="token" value="' . newToken() . '">';
+print '<input type="submit" class="button" value="Enregistrer" style="font-size:0.8em; padding:2px 8px;">';
+print '</form>';
+print '</div>';
 
 // Logs
 print '<h3>Logs de mise à jour</h3>';
@@ -154,7 +173,7 @@ if ($logs) {
     print '<form method="post" action="" style="display:inline;">';
     print '<input type="hidden" name="action" value="clearlogs">';
     print '<input type="hidden" name="token" value="' . newToken() . '">';
-    print '<input type="submit" class="button" style="font-size:0.8em; padding:2px 8px;" value="VIDER LES LOGS" onclick="return confirm(\'Êtes-vous sûr de vouloir vider les logs ?\')">';
+    print '<input type="submit" class="button" style="font-size:0.8em; padding:2px 8px;" value="VIDER" onclick="return confirm(\'Êtes-vous sûr de vouloir vider les logs ?\')">';
     print '</form>';
     print '</div>';
 }
