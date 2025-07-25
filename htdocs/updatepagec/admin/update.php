@@ -78,22 +78,6 @@ if ($action == 'uploadbackup') {
     }
 }
 
-// Traitement de la restauration
-if ($action == 'restore') {
-    if (GETPOST('token') == newToken()) {
-        $updatepagec = new UpdatePagec($db);
-        $restore_result = $updatepagec->restoreBackup();
-        
-        if ($restore_result['success']) {
-            setEventMessages("Restauration effectuée avec succès", null, 'mesgs');
-        } else {
-            setEventMessages("Échec de la restauration", $restore_result['errors'], 'errors');
-        }
-    } else {
-        setEventMessages("Erreur de sécurité : token CSRF invalide", null, 'errors');
-    }
-}
-
 // Gestion de la suppression d'un backup
 if ($action == 'deletebackup') {
     if (GETPOST('token') == newToken()) {
