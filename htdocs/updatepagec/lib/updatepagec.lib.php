@@ -80,6 +80,34 @@ class UpdatePagec
         return $result;
     }
 
+    private function secureBeforeAction($whoami = null)
+    {
+        $conf_file = DOL_DOCUMENT_ROOT . '/conf/conf.php';
+        $lock_file = DOL_DATA_ROOT . '/install.lock';
+        if ($whoami === null) $whoami = trim(shell_exec('whoami'));
+        if (file_exists($conf_file)) {
+            $ok = @chmod($conf_file, 0644);
+            $this->log('INFO', "[AUTO] Avant action : chmod 644 conf.php par $whoami : ".($ok ? 'OK' : 'ECHEC'));
+        }
+        if (file_exists($lock_file)) {
+            $ok = @unlink($lock_file);
+            $this->log('INFO', "[AUTO] Avant action : suppression install.lock par $whoami : ".($ok ? 'OK' : 'ECHEC'));
+        }
+    }
+
+    private function secureAfterAction($whoami = null)
+    {
+        $conf_file = DOL_DOCUMENT_ROOT . '/conf/conf.php';
+        $lock_file = DOL_DATA_ROOT . '/install.lock';
+        if ($whoami === null) $whoami = trim(shell_exec('whoami'));
+        if (file_exists($conf_file)) {
+            $ok = @chmod($conf_file, 0444);
+            $this->log('INFO', "[AUTO] Après action : chmod 444 conf.php par $whoami : ".($ok ? 'OK' : 'ECHEC'));
+        }
+        $ok = (file_put_contents($lock_file, 'locked') !== false);
+        $this->log('INFO', "[AUTO] Après action : création install.lock par $whoami : ".($ok ? 'OK' : 'ECHEC'));
+    }
+
     public function launchUpdate()
     {
         $result = array(
@@ -87,6 +115,8 @@ class UpdatePagec
             'logs' => '',
             'errors' => array()
         );
+        $whoami = trim(shell_exec('whoami'));
+        $this->secureBeforeAction($whoami);
         $this->log("INFO", "Début de la sauvegarde automatique avant mise à jour");
         $backup = $this->createBackup();
         if (!$backup['success']) {
@@ -99,20 +129,11 @@ class UpdatePagec
         global $conf;
         $git_repo_url = !empty($conf->global->UPDATEPAGEC_GIT_REPO_URL) ? $conf->global->UPDATEPAGEC_GIT_REPO_URL : 'https://github.com/Pagecran/dolibarr.git';
         $git_branch = !empty($conf->global->UPDATEPAGEC_GIT_BRANCH) ? $conf->global->UPDATEPAGEC_GIT_BRANCH : 'Pagec';
-        $this->log("DEBUG", "URL du repository : $git_repo_url");
-        $this->log("DEBUG", "Branche : $git_branch");
-        $whoami = trim(shell_exec('whoami'));
-        $this->log("DEBUG", "Utilisateur courant : $whoami");
-        
-        // S'assurer que le remote origin pointe vers le bon repository
         $command = "cd " . escapeshellarg(dirname(DOL_DOCUMENT_ROOT)) . " && git remote set-url origin " . escapeshellarg($git_repo_url) . " 2>&1";
         $output = shell_exec($command);
-        $this->log("DEBUG", "Configuration du remote origin :\n" . $output);
-        
-        // Pull de la branche spécifiée
         $command = "cd " . escapeshellarg(dirname(DOL_DOCUMENT_ROOT)) . " && git pull origin " . escapeshellarg($git_branch) . " 2>&1";
         $output = shell_exec($command);
-        $this->log("DEBUG", "Sortie du git pull :\n" . $output);
+        $this->secureAfterAction($whoami);
         $result['output'] = $output;
         $result['logs'] = $this->getLogs(50);
         return $result;
@@ -305,93 +326,6 @@ class UpdatePagec
         return $backup_files;
     }
 
-    /**
-     * Restaure les données depuis les fichiers de backup
-     * 
-     * @return array Résultat de l'opération
-     */
-    public function restoreBackup()
-    {
-        $result = array(
-            'success' => false,
-            'output' => '',
-            'errors' => array()
-        );
-
-        // Validation des permissions
-        if (!$this->validatePermissions()) {
-            $result['errors'][] = $this->langs->trans("InsufficientPermissions");
-            return $result;
-        }
-
-        $this->log("INFO", "Début de la restauration des données");
-
-        try {
-            $restored_files = array();
-
-            // Restauration de la configuration
-            $conf_backup = '/tmp/dolibarr_conf_backup.php';
-            if (file_exists($conf_backup)) {
-                $conf_target = DOL_DOCUMENT_ROOT . '/htdocs/conf/conf.php';
-                
-                // Sauvegarde de la configuration actuelle
-                if (file_exists($conf_target)) {
-                    copy($conf_target, $conf_target . '.before_restore');
-                }
-                
-                // Restauration
-                if (copy($conf_backup, $conf_target)) {
-                    $restored_files[] = 'Configuration (conf.php)';
-                    $this->log("INFO", "Configuration restaurée depuis le backup");
-                } else {
-                    $result['errors'][] = "Impossible de restaurer la configuration";
-                    $this->log("ERROR", "Échec de la restauration de la configuration");
-                }
-            }
-
-            // Restauration des documents
-            $docs_backup = '/tmp/dolibarr_documents_backup.tar.gz';
-            if (file_exists($docs_backup)) {
-                $docs_target = DOL_DOCUMENT_ROOT . '/documents';
-                
-                // Sauvegarde des documents actuels
-                if (is_dir($docs_target)) {
-                    $backup_current = '/tmp/dolibarr_documents_current_' . date('Y-m-d_H-i-s') . '.tar.gz';
-                    $command = "tar -czf $backup_current -C " . DOL_DOCUMENT_ROOT . " documents/";
-                    shell_exec($command);
-                    $this->log("INFO", "Sauvegarde des documents actuels créée: $backup_current");
-                }
-                
-                // Restauration
-                $command = "tar -xzf $docs_backup -C " . DOL_DOCUMENT_ROOT;
-                $output = shell_exec($command . " 2>&1");
-                
-                if (empty($output) || strpos($output, 'error') === false) {
-                    $restored_files[] = 'Documents (documents/)';
-                    $this->log("INFO", "Documents restaurés depuis le backup");
-                } else {
-                    $result['errors'][] = "Impossible de restaurer les documents: $output";
-                    $this->log("ERROR", "Échec de la restauration des documents: $output");
-                }
-            }
-
-            if (empty($restored_files)) {
-                $result['errors'][] = "Aucun fichier de backup trouvé";
-                $this->log("ERROR", "Aucun fichier de backup disponible pour la restauration");
-            } else {
-                $result['success'] = true;
-                $result['output'] = "Fichiers restaurés: " . implode(', ', $restored_files);
-                $this->log("INFO", "Restauration terminée avec succès");
-            }
-
-        } catch (Exception $e) {
-            $this->log("ERROR", "Exception lors de la restauration: " . $e->getMessage());
-            $result['errors'][] = $e->getMessage();
-        }
-
-        return $result;
-    }
-
     public function restoreBackupFile($file, $type)
     {
         $result = array('success' => false, 'output' => '', 'errors' => array());
@@ -400,10 +334,11 @@ class UpdatePagec
             $this->log("ERROR", "Fichier non trouvé : $file");
             return $result;
         }
+        $whoami = trim(shell_exec('whoami'));
+        $this->secureBeforeAction($whoami);
         if ($type == 'sql') {
             $this->log("INFO", "Début restauration base depuis $file");
             $dbtype = $this->db->type;
-            // Récupération des credentials depuis les variables globales de configuration
             global $dolibarr_main_db_user, $dolibarr_main_db_pass, $dolibarr_main_db_name, $dolibarr_main_db_host;
             $dbuser = $dolibarr_main_db_user;
             $dbpass = $dolibarr_main_db_pass;
@@ -435,6 +370,7 @@ class UpdatePagec
             $result['errors'][] = "Type de fichier inconnu : $type";
             $this->log("ERROR", "Type de fichier inconnu : $type");
         }
+        $this->secureAfterAction($whoami);
         return $result;
     }
 
@@ -452,53 +388,5 @@ class UpdatePagec
         }
         usort($files, function($a, $b) { return filemtime($b) - filemtime($a); });
         return $files;
-    }
-
-    public function restoreLastBackup()
-    {
-        global $conf;
-        $backupdir = $conf->admin->dir_output.'/backup';
-        $result = array('success' => false, 'output' => '', 'errors' => array());
-        // 1. Trouver le dernier dump SQL
-        $sqlfiles = glob($backupdir . '/backup_*.sql');
-        $docfiles = glob($backupdir . '/documents_*.tar.gz');
-        if (!$sqlfiles || !$docfiles) {
-            $result['errors'][] = "Aucun fichier de sauvegarde trouvé dans $backupdir";
-            $this->log("ERROR", "Aucun fichier de sauvegarde trouvé dans $backupdir");
-            return $result;
-        }
-        usort($sqlfiles, function($a, $b) { return filemtime($b) - filemtime($a); });
-        usort($docfiles, function($a, $b) { return filemtime($b) - filemtime($a); });
-        $lastsql = $sqlfiles[0];
-        $lastdoc = $docfiles[0];
-        // 2. Restauration base
-        $this->log("INFO", "Début restauration base depuis $lastsql");
-        $dbtype = $this->db->type;
-        // Récupération des credentials depuis les variables globales de configuration
-        global $dolibarr_main_db_user, $dolibarr_main_db_pass, $dolibarr_main_db_name, $dolibarr_main_db_host;
-        $dbuser = $dolibarr_main_db_user;
-        $dbpass = $dolibarr_main_db_pass;
-        $dbname = $dolibarr_main_db_name;
-        $dbhost = $dolibarr_main_db_host;
-        if ($dbtype == 'pgsql') {
-            $cmd = "PGPASSWORD=".escapeshellarg($dbpass)." psql -U ".escapeshellarg($dbuser)." -h ".escapeshellarg($dbhost)." -d ".escapeshellarg($dbname)." -f ".escapeshellarg($lastsql);
-        } else {
-            $cmd = "mysql -u".escapeshellarg($dbuser);
-            if ($dbpass !== '') {
-                $cmd .= " -p" . escapeshellarg($dbpass);
-            }
-            $cmd .= " ".escapeshellarg($dbname)." < ".escapeshellarg($lastsql);
-        }
-        $output = shell_exec($cmd . " 2>&1");
-        $this->log("DEBUG", "Sortie restauration base :\n" . $output);
-        // 3. Restauration documents
-        $this->log("INFO", "Début restauration documents depuis $lastdoc");
-        $docdir = DOL_DATA_ROOT . '/documents';
-        $tarcmd = "tar -xzf " . escapeshellarg($lastdoc) . " -C " . escapeshellarg(DOL_DATA_ROOT);
-        $output2 = shell_exec($tarcmd . " 2>&1");
-        $this->log("DEBUG", "Sortie restauration documents :\n" . $output2);
-        $result['success'] = true;
-        $result['output'] = "Base restaurée depuis $lastsql\nDocuments restaurés depuis $lastdoc";
-        return $result;
     }
 } 
